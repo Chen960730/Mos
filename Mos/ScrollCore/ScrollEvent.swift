@@ -51,14 +51,18 @@ class ScrollEvent {
         return !ScrollEvent.isTrackpad(with: event)
     }
 
-    /// Apply the receiver's direction before passing through continuous remote input.
-    /// Returns true when smoothing must be skipped; discrete wheel input can continue.
-    func prepareRemoteScroll(reverse: Bool) -> Bool {
+    /// Apply the receiver's direction, then decide whether to bypass smoothing.
+    func prepareRemoteScroll(reverse: Bool, smoothContinuousWheel: Bool = false) -> Bool {
         if reverse {
             ScrollEvent.reverseY(self)
             ScrollEvent.reverseX(self)
         }
-        return event.getIntegerValueField(.scrollWheelEventIsContinuous) == 1 || isTrackpad()
+        // UU sends Windows wheel steps as pixel-based (continuous) events without
+        // smoothing. Keep gesture input and Mos-generated frames on the passthrough path.
+        if isTrackpad() || ScrollUtils.shared.isSyntheticSmoothEvent(event) {
+            return true
+        }
+        return event.getIntegerValueField(.scrollWheelEventIsContinuous) == 1 && !smoothContinuousWheel
     }
 }
 

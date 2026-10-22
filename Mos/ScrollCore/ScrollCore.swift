@@ -78,7 +78,10 @@ class ScrollCore {
             InputProcessor.shared.releaseMosScrollMouseSessionsIfPhysicalButtonsAreUp()
         }
         if isRemote {
-            if scrollEvent.prepareRemoteScroll(reverse: Options.shared.general.reverseRemoteScroll) {
+            if scrollEvent.prepareRemoteScroll(
+                reverse: Options.shared.general.reverseRemoteScroll,
+                smoothContinuousWheel: ScrollUtils.shared.isFromUURemoteServer(event)
+            ) {
                 return Unmanaged.passUnretained(event)
             }
         }

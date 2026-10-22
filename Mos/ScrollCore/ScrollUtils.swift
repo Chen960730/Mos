@@ -121,6 +121,7 @@ class ScrollUtils {
     // 远程桌面事件检测缓存
     private var lastSourcePID: pid_t = 0
     private var lastSourceIsRemoteControl: Bool = false
+    private var lastSourceExecutablePath: String?
 
     /// 检测事件来源是否为远程桌面应用
     func isFromRemoteApplication(_ event: CGEvent) -> Bool {
@@ -130,10 +131,12 @@ class ScrollUtils {
         if sourcePID != lastSourcePID {
             lastSourcePID = sourcePID
             lastSourceIsRemoteControl = false
+            lastSourceExecutablePath = nil
 
             if let app = NSRunningApplication(processIdentifier: sourcePID) {
                 // 检查可执行文件路径（系统守护进程）
                 if let path = app.executableURL?.path {
+                    lastSourceExecutablePath = path
                     for keyword in REMOTE_CONTROL_APPLICATION.executableKeywords {
                         if path.contains(keyword) {
                             lastSourceIsRemoteControl = true
@@ -148,6 +151,11 @@ class ScrollUtils {
             }
         }
         return lastSourceIsRemoteControl
+    }
+
+    func isFromUURemoteServer(_ event: CGEvent) -> Bool {
+        return isFromRemoteApplication(event)
+            && lastSourceExecutablePath?.hasSuffix("/UURemote.app/Contents/Helpers/UURemoteServer") == true
     }
 
     // MARK: - 滚动参数: 热键
