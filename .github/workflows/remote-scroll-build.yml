@@ -27,12 +27,12 @@ jobs:
             -only-testing:MosTests/ScrollPosterStateTests \
             -only-testing:MosTests/ScrollDispatchContextTests \
             -only-testing:MosTests/InterpolatorTests
-      - name: Build universal app
+      - name: Build Apple silicon app
         run: |
           xcodebuild -scheme Debug -configuration Debug \
             -destination 'generic/platform=macOS' -derivedDataPath build/DerivedData \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
-            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' build
+            ONLY_ACTIVE_ARCH=NO ARCHS=arm64 build
           codesign --verify --deep --strict 'build/DerivedData/Build/Products/Debug/Mos Debug.app'
           ditto -c -k --sequesterRsrc --keepParent \
             'build/DerivedData/Build/Products/Debug/Mos Debug.app' build/Mos-Remote-Scroll.zip
