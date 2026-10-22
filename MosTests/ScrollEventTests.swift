@@ -29,6 +29,49 @@ final class ScrollEventTests: XCTestCase {
         return event
     }
 
+    func testRemoteContinuousScrollReversesBeforePassthrough() throws {
+        let event = try XCTUnwrap(makeScrollEvent(
+            deltaAxis1: 3, ptDeltaAxis1: 10, fixPtDeltaAxis1: 7.5,
+            deltaAxis2: -2, ptDeltaAxis2: -8, fixPtDeltaAxis2: -4.5
+        ))
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
+        event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 1)
+        let scroll = ScrollEvent(with: event)
+
+        XCTAssertTrue(scroll.prepareRemoteScroll(reverse: true), "Already-continuous remote input must not be smoothed again")
+        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis1), -3)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), -10)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1), -7.5, accuracy: 0.001)
+        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis2), 2)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2), 8)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2), 4.5, accuracy: 0.001)
+        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventMomentumPhase), 1)
+    }
+
+    func testRemoteDirectionCanBeDisabled() throws {
+        for continuous: Int64 in [0, 1] {
+            let event = try XCTUnwrap(makeScrollEvent(ptDeltaAxis1: 10))
+            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: continuous)
+            let bypass = ScrollEvent(with: event).prepareRemoteScroll(reverse: false)
+            XCTAssertEqual(bypass, continuous == 1)
+            XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), 10)
+        }
+    }
+
+    func testRemoteDiscreteScrollKeepsSmoothingAvailable() throws {
+        let event = try XCTUnwrap(makeScrollEvent(deltaAxis1: 3))
+        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 0)
+        let scroll = ScrollEvent(with: event)
+
+        XCTAssertFalse(scroll.prepareRemoteScroll(reverse: true))
+        XCTAssertEqual(scroll.Y.usableValue, -3)
+        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis1), -3)
+    }
+
+    func testRemoteDirectionIsEnabledByDefault() {
+        XCTAssertTrue(OPTIONS_GENERAL_DEFAULT().reverseRemoteScroll)
+    }
+
     // MARK: - initEvent: 优先级 (scrollPt > scrollFixPt > scrollFix)
 
     func testInitEvent_prefersPtOverFixPt() throws {
