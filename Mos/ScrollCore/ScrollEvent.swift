@@ -50,6 +50,16 @@ class ScrollEvent {
     func isMouse() -> Bool {
         return !ScrollEvent.isTrackpad(with: event)
     }
+
+    /// Apply the receiver's direction before passing through continuous remote input.
+    /// Returns true when smoothing must be skipped; discrete wheel input can continue.
+    func prepareRemoteScroll(reverse: Bool) -> Bool {
+        if reverse {
+            ScrollEvent.reverseY(self)
+            ScrollEvent.reverseX(self)
+        }
+        return event.getIntegerValueField(.scrollWheelEventIsContinuous) == 1 || isTrackpad()
+    }
 }
 
 // MARK: - 工具方法

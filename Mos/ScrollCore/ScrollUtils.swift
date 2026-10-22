@@ -150,15 +150,6 @@ class ScrollUtils {
         return lastSourceIsRemoteControl
     }
 
-    /// 检测事件是否来自已被平滑的远程源
-    /// 返回 true 表示应跳过平滑处理
-    func isRemoteSmoothedEvent(_ event: CGEvent) -> Bool {
-        if !isFromRemoteApplication(event) { return false }
-        // 检查 isContinuous 字段判断是否为连续的
-        let isContinuous = event.getDoubleValueField(.scrollWheelEventIsContinuous)
-        return isContinuous == 1.0  // 1.0 表示主控端已平滑
-    }
-
     // MARK: - 滚动参数: 热键
     // 返回 ScrollHotkey? 供 ScrollCore 使用
     func optionsDashKey(application: Application?) -> ScrollHotkey? {
