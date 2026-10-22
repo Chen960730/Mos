@@ -93,10 +93,6 @@ enum ScrollDurationLimits {
 /// 默认设置项
 // 常规
 class OPTIONS_GENERAL_DEFAULT {
-    // Remote input has its own direction, independent of local mouse settings.
-    var reverseRemoteScroll = true {
-        didSet { Options.shared.saveOptions() }
-    }
     // 自启
     var autoLaunch = false {
         willSet {Utils.launchAtStartup(on: newValue)}
