@@ -14,7 +14,6 @@ struct OptionItem {
     struct General {
         static let OptionsExist = "optionsExist"
         static let HideStatusItem = "hideStatusItem"
-        static let ReverseRemoteScroll = "reverseRemoteScroll"
     }
 
     struct Update {
@@ -97,7 +96,6 @@ extension Options {
         // 常规
         general.autoLaunch = LoginServiceKit.isExistLoginItems(at: Bundle.main.bundlePath)
         general.hideStatusItem = UserDefaults.standard.bool(forKey: OptionItem.General.HideStatusItem)
-        general.reverseRemoteScroll = UserDefaults.standard.object(forKey: OptionItem.General.ReverseRemoteScroll) as? Bool ?? true
         // 更新
         update.checkOnAppStart = UserDefaults.standard.bool(forKey: OptionItem.Update.CheckOnAppStart)
         update.includingBetaVersion = UserDefaults.standard.bool(forKey: OptionItem.Update.IncludingBetaVersion)
@@ -155,7 +153,6 @@ extension Options {
             UserDefaults.standard.set("optionsExist", forKey: OptionItem.General.OptionsExist)
             // 常规
             UserDefaults.standard.set(general.hideStatusItem, forKey: OptionItem.General.HideStatusItem)
-            UserDefaults.standard.set(general.reverseRemoteScroll, forKey: OptionItem.General.ReverseRemoteScroll)
             // 更新
             UserDefaults.standard.set(update.checkOnAppStart, forKey: OptionItem.Update.CheckOnAppStart)
             UserDefaults.standard.set(update.includingBetaVersion, forKey: OptionItem.Update.IncludingBetaVersion)
