@@ -29,85 +29,48 @@ final class ScrollEventTests: XCTestCase {
         return event
     }
 
-    func testRemoteContinuousScrollReversesBeforePassthrough() throws {
-        let event = try XCTUnwrap(makeScrollEvent(
-            deltaAxis1: 3, ptDeltaAxis1: 10, fixPtDeltaAxis1: 7.5,
-            deltaAxis2: -2, ptDeltaAxis2: -8, fixPtDeltaAxis2: -4.5
-        ))
-        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-        event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 1)
-        let scroll = ScrollEvent(with: event)
+    func testRemoteScrollPassesThroughUnchangedWithLocalProcessingEnabled() throws {
+        let options = Options.shared.scroll
+        let original = (options.smooth, options.reverse, options.speed)
+        options.smooth = true
+        options.reverse = true
+        options.speed = 2.7
+        defer {
+            options.smooth = original.0
+            options.reverse = original.1
+            options.speed = original.2
+        }
 
-        XCTAssertTrue(scroll.prepareRemoteScroll(reverse: true), "Already-continuous remote input must not be smoothed again")
-        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis1), -3)
-        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), -10)
-        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1), -7.5, accuracy: 0.001)
-        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis2), 2)
-        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2), 8)
-        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2), 4.5, accuracy: 0.001)
-        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventMomentumPhase), 1)
-    }
-
-    func testRemoteDirectionCanBeDisabled() throws {
+        // Cover UU Windows wheel input, gesture frames, and frames smoothed by a sender.
         for continuous: Int64 in [0, 1] {
-            let event = try XCTUnwrap(makeScrollEvent(ptDeltaAxis1: 10))
-            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: continuous)
-            let bypass = ScrollEvent(with: event).prepareRemoteScroll(reverse: false)
-            XCTAssertEqual(bypass, continuous == 1)
-            XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), 10)
+            for phase: Int64 in [0, 1] {
+                for marked in [false, true] {
+                    let event = try XCTUnwrap(makeScrollEvent(
+                        deltaAxis1: -12, ptDeltaAxis1: -120, fixPtDeltaAxis1: -12,
+                        deltaAxis2: 3, ptDeltaAxis2: 30, fixPtDeltaAxis2: 3
+                    ))
+                    event.setIntegerValueField(.scrollWheelEventIsContinuous, value: continuous)
+                    event.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
+                    event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: phase)
+                    if marked { ScrollUtils.shared.markSyntheticSmoothEvent(event) }
+                    let fields: [CGEventField] = [
+                        .scrollWheelEventDeltaAxis1, .scrollWheelEventPointDeltaAxis1,
+                        .scrollWheelEventFixedPtDeltaAxis1, .scrollWheelEventDeltaAxis2,
+                        .scrollWheelEventPointDeltaAxis2, .scrollWheelEventFixedPtDeltaAxis2,
+                        .scrollWheelEventIsContinuous, .scrollWheelEventScrollPhase,
+                        .scrollWheelEventMomentumPhase
+                    ]
+                    let before = fields.map { event.getDoubleValueField($0) }
+                    let marker = event.getIntegerValueField(.eventSourceUserData)
+
+                    let result = try XCTUnwrap(ScrollCore.processScrollEvent(event, isRemote: true))
+
+                    XCTAssertTrue(result.takeUnretainedValue() === event)
+                    XCTAssertEqual(fields.map { event.getDoubleValueField($0) }, before)
+                    XCTAssertEqual(event.getIntegerValueField(.eventSourceUserData), marker)
+                }
+            }
         }
-    }
-
-    func testRemoteDiscreteScrollKeepsSmoothingAvailable() throws {
-        let event = try XCTUnwrap(makeScrollEvent(deltaAxis1: 3))
-        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 0)
-        let scroll = ScrollEvent(with: event)
-
-        XCTAssertFalse(scroll.prepareRemoteScroll(reverse: true))
-        XCTAssertEqual(scroll.Y.usableValue, -3)
-        XCTAssertEqual(event.getIntegerValueField(.scrollWheelEventDeltaAxis1), -3)
-    }
-
-    func testRemoteDirectionIsEnabledByDefault() {
-        XCTAssertTrue(OPTIONS_GENERAL_DEFAULT().reverseRemoteScroll)
-    }
-
-    func testUUWindowsWheelKeepsSmoothingAvailableWithIndependentDirection() throws {
-        for reverse in [false, true] {
-            // Captured from UURemoteServer: Windows wheel down, pixel units, no gesture phases.
-            let event = try XCTUnwrap(makeScrollEvent(
-                deltaAxis1: -12, ptDeltaAxis1: -120, fixPtDeltaAxis1: -12
-            ))
-            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-            event.setIntegerValueField(.scrollWheelEventScrollCount, value: 0)
-            event.setIntegerValueField(.scrollWheelEventScrollPhase, value: 0)
-            event.setIntegerValueField(.scrollWheelEventMomentumPhase, value: 0)
-            let scroll = ScrollEvent(with: event)
-
-            XCTAssertFalse(scroll.prepareRemoteScroll(reverse: reverse, smoothContinuousWheel: true))
-            XCTAssertEqual(scroll.Y.usableValue, reverse ? 120 : -120)
-            XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), reverse ? 120 : -120)
-        }
-    }
-
-    func testUUGestureInputStillBypassesSmoothing() throws {
-        for phaseField in [CGEventField.scrollWheelEventScrollPhase, .scrollWheelEventMomentumPhase] {
-            let event = try XCTUnwrap(makeScrollEvent(ptDeltaAxis1: -120))
-            event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-            event.setIntegerValueField(phaseField, value: 1)
-
-            XCTAssertTrue(ScrollEvent(with: event).prepareRemoteScroll(reverse: false, smoothContinuousWheel: true))
-            XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), -120)
-        }
-    }
-
-    func testUUMosSmoothedInputStillBypassesSmoothing() throws {
-        let event = try XCTUnwrap(makeScrollEvent(ptDeltaAxis1: -10))
-        event.setIntegerValueField(.scrollWheelEventIsContinuous, value: 1)
-        ScrollUtils.shared.markSyntheticSmoothEvent(event)
-
-        XCTAssertTrue(ScrollEvent(with: event).prepareRemoteScroll(reverse: false, smoothContinuousWheel: true))
-        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), -10)
     }
 
     // MARK: - initEvent: 优先级 (scrollPt > scrollFixPt > scrollFix)
