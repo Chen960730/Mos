@@ -70,6 +70,7 @@ struct REMOTE_CONTROL_APPLICATION {
         "screensharingd",          // macOS 屏幕共享守护进程
         "ScreensharingAgent",     // macOS 屏幕共享用户会话代理
         "ARDAgent",                // Apple Remote Desktop
+        "/UURemote.app/Contents/Helpers/UURemoteServer", // UU background input service
     ]
     // Bundle Identifier（用于第三方应用）
     static let bundleIdentifiers = [
@@ -92,6 +93,10 @@ enum ScrollDurationLimits {
 /// 默认设置项
 // 常规
 class OPTIONS_GENERAL_DEFAULT {
+    // Remote input has its own direction, independent of local mouse settings.
+    var reverseRemoteScroll = true {
+        didSet { Options.shared.saveOptions() }
+    }
     // 自启
     var autoLaunch = false {
         willSet {Utils.launchAtStartup(on: newValue)}
