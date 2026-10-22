@@ -1,6 +1,41 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Reverse incoming remote scrolling": {
+      "comment": "Menu toggle for scrolling received from remote desktop software",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reverse incoming remote scrolling"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反转传入的远程滚动"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反轉傳入的遠端捲動"
+          }
+        },
+        "zh-Hant-TW": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反轉傳入的遠端捲動"
+          }
+        },
+        "zh-Hant-HK": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反轉傳入的遠端捲動"
+          }
+        }
+      }
+    },
     "⚠️ Warning": {
       "comment": "Toast debug style button"
     },
