@@ -50,20 +50,6 @@ class ScrollEvent {
     func isMouse() -> Bool {
         return !ScrollEvent.isTrackpad(with: event)
     }
-
-    /// Apply the receiver's direction, then decide whether to bypass smoothing.
-    func prepareRemoteScroll(reverse: Bool, smoothContinuousWheel: Bool = false) -> Bool {
-        if reverse {
-            ScrollEvent.reverseY(self)
-            ScrollEvent.reverseX(self)
-        }
-        // UU sends Windows wheel steps as pixel-based (continuous) events without
-        // smoothing. Keep gesture input and Mos-generated frames on the passthrough path.
-        if isTrackpad() || ScrollUtils.shared.isSyntheticSmoothEvent(event) {
-            return true
-        }
-        return event.getIntegerValueField(.scrollWheelEventIsContinuous) == 1 && !smoothContinuousWheel
-    }
 }
 
 // MARK: - 工具方法

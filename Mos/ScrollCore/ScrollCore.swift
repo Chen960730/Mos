@@ -60,9 +60,17 @@ class ScrollCore {
         if type != .scrollWheel {
             return Unmanaged.passUnretained(event)
         }
-        let isRemote = ScrollUtils.shared.isFromRemoteApplication(event)
-        // Only skip our own events; remote input may retain the sender's Mos marker.
-        if !isRemote && ScrollUtils.shared.isSyntheticSmoothEvent(event) {
+        return ScrollCore.processScrollEvent(event, isRemote: ScrollUtils.shared.isFromRemoteApplication(event))
+    }
+
+    static func processScrollEvent(_ event: CGEvent, isRemote: Bool) -> Unmanaged<CGEvent>? {
+        // Remote input already carries the sender's direction and scrolling behavior.
+        // Return before reversal, smoothing, speed scaling, or local hotkey handling.
+        if isRemote {
+            return Unmanaged.passUnretained(event)
+        }
+        // Skip Mos-generated frames to avoid processing them again.
+        if ScrollUtils.shared.isSyntheticSmoothEvent(event) {
 #if DEBUG
             ScrollPoster.shared.recordSkippedSyntheticEvent()
 #endif
@@ -77,18 +85,10 @@ class ScrollCore {
             InputProcessor.shared.markMosScrollActionSessionsUsedForScroll()
             InputProcessor.shared.releaseMosScrollMouseSessionsIfPhysicalButtonsAreUp()
         }
-        if isRemote {
-            if scrollEvent.prepareRemoteScroll(
-                reverse: Options.shared.general.reverseRemoteScroll,
-                smoothContinuousWheel: ScrollUtils.shared.isFromUURemoteServer(event)
-            ) {
-                return Unmanaged.passUnretained(event)
-            }
-        }
         // 不处理本机触控板
         // 无法区分黑苹果, 因为黑苹果的触控板驱动直接模拟鼠标输入
         // 无法区分 Magic Mouse, 因为其滚动特征与内置的 Trackpad 一致
-        if !isRemote && scrollEvent.isTrackpad() {
+        if scrollEvent.isTrackpad() {
             return Unmanaged.passUnretained(event)
         }
         // 当鼠标输入, 根据需要执行翻转方向/平滑滚动
@@ -129,12 +129,11 @@ class ScrollCore {
             enableSmoothHorizontal = false
         }
         let willShiftVerticalToHorizontal = ScrollCore.shared.toggleScroll && hasVerticalDelta && !hasHorizontalDelta
-        // Remote direction was handled above; never apply the local reversal a second time.
-        let verticalReversePreference = !isRemote && (willShiftVerticalToHorizontal ? enableReverseHorizontal : enableReverseVertical)
+        let verticalReversePreference = (willShiftVerticalToHorizontal ? enableReverseHorizontal : enableReverseVertical)
         if hasVerticalDelta && verticalReversePreference {
             ScrollEvent.reverseY(scrollEvent)
         }
-        if hasHorizontalDelta && !isRemote && enableReverseHorizontal {
+        if hasHorizontalDelta && enableReverseHorizontal {
             ScrollEvent.reverseX(scrollEvent)
         }
 
