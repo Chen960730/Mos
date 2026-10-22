@@ -1,0 +1,50 @@
+name: Build remote scroll edition
+
+on:
+  push:
+    branches: [uu-remote-reverse]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test scrolling
+        run: |
+          xcodebuild -version
+          xcodebuild -scheme Debug -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath build/DerivedData \
+            -resultBundlePath build/ScrollTests.xcresult \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            test -only-testing:MosTests/ScrollEventTests \
+            -only-testing:MosTests/ScrollCoreHotkeyTests \
+            -only-testing:MosTests/ScrollFilterTests \
+            -only-testing:MosTests/ScrollPosterStateTests \
+            -only-testing:MosTests/ScrollDispatchContextTests \
+            -only-testing:MosTests/InterpolatorTests
+      - name: Build universal app
+        run: |
+          xcodebuild -scheme Debug -configuration Debug \
+            -destination 'generic/platform=macOS' -derivedDataPath build/DerivedData \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            ONLY_ACTIVE_ARCH=NO 'ARCHS=arm64 x86_64' build
+          codesign --verify --deep --strict 'build/DerivedData/Build/Products/Debug/Mos Debug.app'
+          ditto -c -k --sequesterRsrc --keepParent \
+            'build/DerivedData/Build/Products/Debug/Mos Debug.app' build/Mos-Remote-Scroll.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mos-Remote-Scroll
+          path: build/Mos-Remote-Scroll.zip
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ScrollTests-results
+          path: build/ScrollTests.xcresult
+          retention-days: 7
