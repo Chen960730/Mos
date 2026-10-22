@@ -85,6 +85,7 @@ extension StatusItemManager {
             Utils.addMenuItem(to: menu, title: "Debug: Toast", action: #selector(toastDebugClick))
             // Preferences
             Utils.addMenuItem(to: menu, title: NSLocalizedString("Preferences", comment: ""), icon: #imageLiteral(resourceName: "SF.gauge"), action: #selector(preferencesClick))
+            addRemoteScrollToggle(to: menu)
             // Quit
             Utils.addMenuItemWithSeparator(to: menu, title: NSLocalizedString("Quit", comment: ""), icon: #imageLiteral(resourceName: "SF.escape"), action: #selector(quitClick))
         }
@@ -96,9 +97,22 @@ extension StatusItemManager {
             menu.removeAllItems()
             // Preferences
             Utils.addMenuItem(to: menu, title: NSLocalizedString("Preferences", comment: ""), icon: #imageLiteral(resourceName: "SF.gauge"), action: #selector(preferencesClick))
+            addRemoteScrollToggle(to: menu)
             // Quit
             Utils.addMenuItemWithSeparator(to: menu, title: NSLocalizedString("Quit", comment: ""), icon: #imageLiteral(resourceName: "SF.escape"), action: #selector(quitClick))
         }
+    }
+    private func addRemoteScrollToggle(to menu: NSMenu) {
+        let toggle = menu.addItem(
+            withTitle: NSLocalizedString("Reverse incoming remote scrolling", comment: "Menu toggle for scrolling received from remote desktop software"),
+            action: #selector(reverseRemoteScrollClick),
+            keyEquivalent: ""
+        )
+        toggle.target = self
+        toggle.state = Options.shared.general.reverseRemoteScroll ? .on : .off
+    }
+    @objc func reverseRemoteScrollClick() {
+        Options.shared.general.reverseRemoteScroll.toggle()
     }
     @objc func monitorClick() {
         WindowManager.shared.showWindow(withIdentifier: WINDOW_IDENTIFIER.monitorWindowController)
