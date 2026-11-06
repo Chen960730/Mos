@@ -2,7 +2,7 @@ name: Build remote scroll edition
 
 on:
   push:
-    branches: [uu-remote-reverse]
+    branches: [uu-remote-reverse, fix/chrome-scroll-sequence]
   workflow_dispatch:
 
 permissions:
@@ -25,6 +25,7 @@ jobs:
             -only-testing:MosTests/ScrollCoreHotkeyTests \
             -only-testing:MosTests/ScrollFilterTests \
             -only-testing:MosTests/ScrollPosterStateTests \
+            -only-testing:MosTests/ScrollPhaseTests \
             -only-testing:MosTests/ScrollDispatchContextTests \
             -only-testing:MosTests/InterpolatorTests \
             -only-testing:MosTests/OptionsButtonsLoaderTests/testAppRuntimeDetectsXCTestEnvironment \
