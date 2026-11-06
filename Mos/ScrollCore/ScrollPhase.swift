@@ -73,6 +73,27 @@ enum PhaseItem {
     case Momentum
 }
 
+/// A smoothed mouse wheel is one scroll gesture, including Mos's animated tail.
+/// Chrome must receive a new Began after an Ended; mixing phase-less updates with
+/// explicit Ended events lets its wheel-latching timer join two different gestures.
+struct ChromeWheelSequence {
+    private(set) var isActive = false
+
+    mutating func nextPhase(y: Double, x: Double, ending: Bool = false) -> Phase? {
+        if ending {
+            guard isActive else { return nil }
+            isActive = false
+            return .TrackingEnd
+        }
+        // Internal tracking/momentum transitions have no wheel displacement.
+        // They must not begin or prolong the browser's wheel gesture.
+        guard y != 0 || x != 0 else { return nil }
+        let phase: Phase = isActive ? .TrackingOngoing : .TrackingBegin
+        isActive = true
+        return phase
+    }
+}
+
 let PhaseValueMapping: [Phase: [PhaseItem: Double]] = [
     // 空
     Phase.Idle: [PhaseItem.Scroll: 0.0, PhaseItem.Momentum: 0.0],

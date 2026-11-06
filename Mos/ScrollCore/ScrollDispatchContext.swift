@@ -46,6 +46,8 @@ final class ScrollDispatchContext {
 #endif
 
 #if DEBUG
+    var postEventForTests: ((CGEvent, pid_t) -> Void)?
+    func flushForTests() { postQueue.sync {} }
     init() {}
 #else
     private init() {}
@@ -53,7 +55,8 @@ final class ScrollDispatchContext {
 
     @discardableResult
     func capture(event: CGEvent) -> Bool {
-        guard let template = event.copy() else {
+        let pid = pid_t(event.getIntegerValueField(.eventTargetUnixProcessID))
+        guard pid > 0, let template = event.copy() else {
 #if DEBUG
             os_unfair_lock_lock(&lock)
             updateSnapshotFailures &+= 1
@@ -61,7 +64,6 @@ final class ScrollDispatchContext {
 #endif
             return false
         }
-        let pid = pid_t(event.getIntegerValueField(.eventTargetUnixProcessID))
         os_unfair_lock_lock(&lock)
         state.eventTemplate = template
         state.targetPID = pid
@@ -128,11 +130,17 @@ final class ScrollDispatchContext {
             //    将滚动事件"带到"其他应用, 始终送达原始滚动目标进程
             // 3. 进程内通过 event.location 做窗口级 hit-testing, 路由到正确窗口
             // 合成事件标记 (eventSourceUserData) 作为防御性旁路保留
-            snapshot.event.postToPid(snapshot.targetPID)
 #if DEBUG
+            if let postEvent = self.postEventForTests {
+                postEvent(snapshot.event, snapshot.targetPID)
+            } else {
+                snapshot.event.postToPid(snapshot.targetPID)
+            }
             os_unfair_lock_lock(&self.lock)
             self.postedFrames &+= 1
             os_unfair_lock_unlock(&self.lock)
+#else
+            snapshot.event.postToPid(snapshot.targetPID)
 #endif
         }
     }

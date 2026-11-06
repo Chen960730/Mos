@@ -13,7 +13,12 @@ class ScrollPoster {
 
     // 单例
     static let shared = ScrollPoster()
-    init() { NSLog("Module initialized: ScrollPoster") }
+    init(dispatchContext: ScrollDispatchContext = .shared,
+         isChromeTarget: @escaping (CGEvent) -> Bool = { ScrollUtils.shared.isEventTargetingChrome($0) }) {
+        self.dispatchContext = dispatchContext
+        self.isChromeTarget = isChromeTarget
+        NSLog("Module initialized: ScrollPoster")
+    }
 
     // 插值器
     private let filter = ScrollFilter()
@@ -40,24 +45,47 @@ class ScrollPoster {
     private let momentumEndDelay: CFTimeInterval = 0.13
     // 状态锁和投递上下文
     private var stateLock = os_unfair_lock_s()
-    private let dispatchContext = ScrollDispatchContext.shared
+    private let dispatchContext: ScrollDispatchContext
+    private let isChromeTarget: (CGEvent) -> Bool
+    private var chromeWheelSequence = ChromeWheelSequence()
+    private var useChromeWheelPhases = false
+    private var targetPID: pid_t = 0
     // CVDisplayLink 恢复机制
     private var keeper: Timer?
     private var lastCallbackTime: CFTimeInterval = 0.0
     private var lastRecreateAttempt: CFTimeInterval = 0.0
     private let recreateCooldown: CFTimeInterval = 3.0
     // 主线程访问, 无需锁
-    var isAvailable: Bool { return poster != nil }
+    var isAvailable: Bool {
+        guard let poster = poster else { return false }
+        return CVDisplayLinkIsRunning(poster)
+    }
 }
 
 // MARK: - 滚动数据更新控制
 extension ScrollPoster {
-    func update(event: CGEvent, duration: Double, y: Double, x: Double, speed: Double, amplification: Double = 1) -> Self {
-        guard dispatchContext.capture(event: event) else {
-            return self
-        }
+    @discardableResult
+    func update(event: CGEvent, duration: Double, y: Double, x: Double, speed: Double, amplification: Double = 1) -> Bool {
+        let nextTargetPID = pid_t(event.getIntegerValueField(.eventTargetUnixProcessID))
+        guard nextTargetPID > 0 else { return false }
+        // Resolve the application on the input thread, not the display callback.
+        let nextUseChromeWheelPhases = !resolveSimTrackpadEnabled() && isChromeTarget(event)
         os_unfair_lock_lock(&stateLock)
         defer { os_unfair_lock_unlock(&stateLock) }
+        let now = CFAbsoluteTimeGetCurrent()
+        let interval = lastManualEventTime > 0.0 ? now - lastManualEventTime : nil
+        let separatedByTime = interval == nil ? true : interval! >= manualSeparationThreshold
+        let phase = ScrollPhase.shared.phase
+        let separatedPhase = (phase == .Idle || phase == .Leave || phase == .MomentumEnd || phase == .TrackingEnd)
+        let separated = manualInputEnded || separatedByTime || separatedPhase
+        if chromeWheelSequence.isActive && (separated || targetPID != nextTargetPID || !nextUseChromeWheelPhases) {
+            // Close the old gesture with its old event/position before capturing
+            // the next input. A new stroke must not inherit Chrome's old latch.
+            finishChromeWheelSequence()
+        }
+        guard dispatchContext.capture(event: event) else { return false }
+        targetPID = nextTargetPID
+        useChromeWheelPhases = nextUseChromeWheelPhases
         // 更新滚动配置
         self.duration = duration
         // 更新滚动数据
@@ -74,12 +102,6 @@ extension ScrollPoster {
             current.x = 0.0
         }
         delta = (y: y, x: x)
-        let now = CFAbsoluteTimeGetCurrent()
-        let interval = lastManualEventTime > 0.0 ? now - lastManualEventTime : nil
-        let separatedByTime = interval == nil ? true : interval! >= manualSeparationThreshold
-        let phase = ScrollPhase.shared.phase
-        let separatedPhase = (phase == .Idle || phase == .Leave || phase == .MomentumEnd || phase == .TrackingEnd)
-        let separated = manualInputEnded || separatedByTime || separatedPhase
         let plan = ScrollPhase.shared.onManualInputDetected(isSeparated: separated)
         perform(plan, emitTargetImmediately: false)
         lastManualEventTime = now
@@ -87,7 +109,7 @@ extension ScrollPoster {
         momentumActive = false
         momentumEndScheduledTime = nil
         trackingEndScheduledTime = nil
-        return self
+        return true
     }
     func updateShifting(enable: Bool) {
         os_unfair_lock_lock(&stateLock)
@@ -125,6 +147,13 @@ extension ScrollPoster {
     }
 
 #if DEBUG
+    @discardableResult
+    func postFrameForTests(y: Double, x: Double) -> Bool {
+        os_unfair_lock_lock(&stateLock)
+        defer { os_unfair_lock_unlock(&stateLock) }
+        return post((y: y, x: x))
+    }
+
     func recordSkippedSyntheticEvent() {
         dispatchContext.recordSkippedSyntheticEvent()
     }
@@ -137,6 +166,9 @@ extension ScrollPoster {
     private func resetUnlocked() {
         // 重置数值
         dispatchContext.clearContext()
+        chromeWheelSequence = ChromeWheelSequence()
+        useChromeWheelPhases = false
+        targetPID = 0
         current = ( y: 0.0, x: 0.0 )
         delta = ( y: 0.0, x: 0.0 )
         buffer = ( y: 0.0, x: 0.0 )
@@ -222,19 +254,10 @@ extension ScrollPoster {
         }
 
         // 发送结束事件
-        if enableSimTrackpad {
+        if useChromeWheelPhases {
+            finishChromeWheelSequence()
+        } else if enableSimTrackpad {
             perform(plan, emitTargetImmediately: true)
-        } else {
-            if let snapshot = dispatchContext.preparePostingSnapshot(),
-               ScrollUtils.shared.isEventTargetingChrome(snapshot.event),
-               let phaseValues = phaseValues(for: .TrackingEnd) {
-                _ = post(
-                    snapshot,
-                    (y: 0.0, x: 0.0),
-                    phaseOverride: phaseValues,
-                    fallbackToCurrentPhase: false
-                )
-            }
         }
         manualInputEnded = true
         momentumActive = false
@@ -300,6 +323,12 @@ extension ScrollPoster {
 
 // MARK: - 数据处理及发送
 private extension ScrollPoster {
+    func finishChromeWheelSequence() {
+        guard let snapshot = dispatchContext.preparePostingSnapshot(),
+              let values = phaseValues(for: .TrackingEnd) else { return }
+        _ = post(snapshot, (y: 0, x: 0), phaseOverride: values, fallbackToCurrentPhase: false)
+    }
+
     func perform(_ plan: ScrollPhase.TransitionPlan, emitTargetImmediately: Bool, delta: (y: Double, x: Double) = (0.0, 0.0)) {
         if plan.queue.isEmpty && plan.target == nil {
             return
@@ -428,7 +457,22 @@ private extension ScrollPoster {
 
     @discardableResult
     func post(_ snapshot: ScrollDispatchContext.PostingSnapshot, _ v: (y: Double, x: Double), phaseOverride: (scroll: Double, momentum: Double)? = nil, fallbackToCurrentPhase: Bool = true) -> Bool {
-        if let override = phaseOverride {
+        if useChromeWheelPhases {
+            let ending = phaseOverride?.scroll == PhaseValueMapping[.TrackingEnd]?[.Scroll]
+            guard let phase = chromeWheelSequence.nextPhase(y: v.y, x: v.x, ending: ending),
+                  let values = phaseValues(for: phase) else {
+                ScrollPhase.shared.didDeliverFrame()
+                return false
+            }
+            snapshot.event.setDoubleValueField(.scrollWheelEventScrollPhase, value: values.scroll)
+            snapshot.event.setDoubleValueField(.scrollWheelEventMomentumPhase, value: 0)
+            // Do not leave the original wheel ticks in zero-delta end frames.
+            snapshot.event.setIntegerValueField(.scrollWheelEventDeltaAxis1, value: 0)
+            snapshot.event.setIntegerValueField(.scrollWheelEventDeltaAxis2, value: 0)
+            snapshot.event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis1, value: 0)
+            snapshot.event.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: 0)
+            snapshot.event.timestamp = DispatchTime.now().uptimeNanoseconds
+        } else if let override = phaseOverride {
             snapshot.event.setDoubleValueField(.scrollWheelEventScrollPhase, value: override.scroll)
             snapshot.event.setDoubleValueField(.scrollWheelEventMomentumPhase, value: override.momentum)
         } else if fallbackToCurrentPhase,

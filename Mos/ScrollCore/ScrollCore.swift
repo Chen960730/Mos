@@ -167,15 +167,26 @@ class ScrollCore {
         let needsPassthrough = needVerticalPassthrough || needHorizontalPassthrough
         let shouldSmoothAny = (smoothedY != 0.0) || (smoothedX != 0.0)
 
+        var acceptedSmoothInput = false
         if shouldSmoothAny {
-            ScrollPoster.shared.update(
+            acceptedSmoothInput = ScrollPoster.shared.update(
                 event: event,
                 duration: duration,
                 y: smoothedY,
                 x: smoothedX,
                 speed: speed,
                 amplification: ScrollCore.shared.dashAmplification
-            ).tryStart()
+            )
+            if acceptedSmoothInput {
+                ScrollPoster.shared.tryStart()
+                acceptedSmoothInput = ScrollPoster.shared.isAvailable
+            }
+            // A missing target or failed display link must not swallow the
+            // original wheel event (including either axis of a mixed event).
+            if !acceptedSmoothInput {
+                ScrollPoster.shared.reset()
+                return Unmanaged.passUnretained(event)
+            }
         }
 
         if needsPassthrough {
@@ -189,7 +200,7 @@ class ScrollCore {
         }
 
         if shouldSmoothAny {
-            if ScrollPoster.shared.isAvailable {
+            if acceptedSmoothInput {
                 return nil
             } else {
                 return Unmanaged.passUnretained(event)
