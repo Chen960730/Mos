@@ -48,6 +48,15 @@ final class ScrollDispatchContextTests: XCTestCase {
         XCTAssertNotNil(snapshot, "after capture, snapshot should be available")
     }
 
+    func testCapture_rejectsMissingOrInvalidTarget() throws {
+        let event = try XCTUnwrap(makeScrollEvent())
+        for pid: Int64 in [0, -1] {
+            event.setIntegerValueField(.eventTargetUnixProcessID, value: pid)
+            XCTAssertFalse(sut.capture(event: event))
+            XCTAssertNil(sut.preparePostingSnapshot())
+        }
+    }
+
     // MARK: - preparePostingSnapshot: 无 capture 时
 
     func testPreparePostingSnapshot_withoutCapture_returnsNil() {

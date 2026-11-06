@@ -73,6 +73,36 @@ final class ScrollEventTests: XCTestCase {
         }
     }
 
+    func testLocalMixedAxisScrollWithMissingTargetIsNotSwallowed() throws {
+        let options = Options.shared.scroll
+        let original = (options.smooth, options.smoothVertical, options.smoothHorizontal, options.reverse)
+        let originalAllowlist = Options.shared.application.allowlist
+        let originalBlock = ScrollCore.shared.blockSmooth
+        let originalToggle = ScrollCore.shared.toggleScroll
+        options.smooth = true
+        options.smoothVertical = true
+        options.smoothHorizontal = false
+        options.reverse = false
+        Options.shared.application.allowlist = false
+        ScrollCore.shared.blockSmooth = false
+        ScrollCore.shared.toggleScroll = false
+        defer {
+            options.smooth = original.0
+            options.smoothVertical = original.1
+            options.smoothHorizontal = original.2
+            options.reverse = original.3
+            Options.shared.application.allowlist = originalAllowlist
+            ScrollCore.shared.blockSmooth = originalBlock
+            ScrollCore.shared.toggleScroll = originalToggle
+        }
+        let event = try XCTUnwrap(makeScrollEvent(ptDeltaAxis1: -40, ptDeltaAxis2: 20))
+        event.setIntegerValueField(.eventTargetUnixProcessID, value: 0)
+        let result = try XCTUnwrap(ScrollCore.processScrollEvent(event, isRemote: false))
+        XCTAssertTrue(result.takeUnretainedValue() === event)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis1), -40)
+        XCTAssertEqual(event.getDoubleValueField(.scrollWheelEventPointDeltaAxis2), 20)
+    }
+
     // MARK: - initEvent: 优先级 (scrollPt > scrollFixPt > scrollFix)
 
     func testInitEvent_prefersPtOverFixPt() throws {
